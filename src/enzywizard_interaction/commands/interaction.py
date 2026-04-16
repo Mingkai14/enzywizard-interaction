@@ -53,7 +53,7 @@ pi-cation interaction (PICATION), disulfide bond (SSBOND).
 The geometric definitions and interaction calculation formula follow
 the residue interaction network methods RING4.
 To improve efficiency, the program uses vectorized geometry operations and
-KD-tree accelerated neighbour searching where applicable, enabling fast
+KD-tree accelerated neighbour searching, enabling fast
 interaction detection on protein / docked protein-substrate systems.
 The tool outputs structured interaction records and summarized statistics
 suitable for downstream applications such as enzyme-substrate interaction
