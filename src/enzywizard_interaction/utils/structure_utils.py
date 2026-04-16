@@ -1,0 +1,155 @@
+from __future__ import annotations
+
+from Bio.PDB.Model import Model
+from Bio.PDB.Chain import Chain
+
+from Bio.PDB import Atom
+from Bio.PDB.Structure import Structure
+from ..utils.logging_utils import Logger
+from Bio.Data.IUPACData import protein_letters_3to1
+
+
+from typing import List, Tuple, Dict, Any
+import numpy as np
+
+def get_first_model(struct: Structure, logger: Logger) -> Model | None:
+    for m in struct:
+        return m
+    logger.print(f"[ERROR] No model found in structure")
+    return None
+
+def get_single_chain(struct: Structure, logger:Logger) -> Chain | None:
+    m = get_first_model(struct, logger)
+    if not m:
+        return None
+    for chain in m.get_chains():
+        return chain
+    logger.print(f"[ERROR] No chain found in structure")
+    return None
+
+def get_chain_length(chain: Chain, logger:Logger) -> int | None:
+    if chain is None:
+        logger.print(f"[ERROR] Bad chain input")
+        return None
+
+    length = 0
+
+    for residue in chain:
+        if residue.id[0] != " ":
+            continue
+        length += 1
+    if not length:
+        logger.print(f"[ERROR] Invalid sequence length")
+        return None
+    return length
+
+
+
+def get_residues_by_chain(chain: Chain, logger: Logger) -> List[Tuple[Tuple[str,int,str], str, Tuple[float, float, float]]] | None:
+    result: List[Tuple[Tuple[str, int, str], str, Tuple[float, float, float]]] = []
+
+    for res in chain.get_residues():
+        hetflag, resseq, icode = res.id
+
+        if hetflag != " ":
+            continue
+
+        resname = res.get_resname().strip()
+
+        # 必须有 CA 原子
+        if "CA" not in res:
+            logger.print(f"[ERROR] Residue {resseq} {resname} missing CA atom, skipped.")
+            return None
+
+        ca: Atom = res["CA"]
+        coord = tuple(ca.get_coord())  # (x, y, z)
+
+        result.append(((hetflag,resseq,icode), resname, coord))
+
+    return result
+
+def get_sequence(residues: List[Tuple[Tuple[str, int, str], str, Tuple[float, float, float]]],logger: Logger) -> str | None:
+
+    if residues is None:
+        logger.print("[ERROR] Residues input is None")
+        return None
+
+    if len(residues) == 0:
+        logger.print("[ERROR] Empty residues list")
+        return None
+
+    seq_chars: List[str] = []
+
+    for residue_key, resname, _ in residues:
+        aa = protein_letters_3to1.get(resname.capitalize())
+        if aa is None:
+            logger.print(f"[ERROR] Unsupported residue name: {resname}")
+            return None
+        seq_chars.append(aa)
+
+    return "".join(seq_chars)
+
+
+
+
+def structure_has_hydrogen(struct: Structure, logger) -> bool:
+    if not isinstance(struct, Structure):
+        logger.print("[ERROR] struct must be a Bio.PDB Structure.")
+        return False
+
+    try:
+        for atom in struct.get_atoms():
+            element = getattr(atom, "element", None)
+
+            if element == "H" or (element is None and atom.get_name().startswith("H")):
+                return True
+
+        return False
+
+    except Exception:
+        logger.print(f"[ERROR] Failed to inspect hydrogens in structure")
+        return False
+
+def structure_has_too_few_hydrogens(struct: Structure,logger,min_hydrogen_count: int = 10,min_hydrogen_ratio: float = 0.05) -> bool:
+    if not isinstance(struct, Structure):
+        logger.print("[ERROR] struct must be a Bio.PDB Structure.")
+        return True
+
+    if not isinstance(min_hydrogen_count, int) or min_hydrogen_count < 0:
+        logger.print("[ERROR] min_hydrogen_count must be a non-negative integer.")
+        return True
+
+    if not isinstance(min_hydrogen_ratio, (int, float)) or float(min_hydrogen_ratio) < 0.0:
+        logger.print("[ERROR] min_hydrogen_ratio must be a non-negative number.")
+        return True
+
+    try:
+        atom_count = 0
+        h_count = 0
+
+        for atom in struct.get_atoms():
+            atom_count += 1
+
+            element = getattr(atom, "element", None)
+            if element == "H" or (element is None and atom.get_name().startswith("H")):
+                h_count += 1
+
+        if atom_count <= 0:
+            logger.print("[ERROR] Structure contains no atoms.")
+            return True
+
+        h_ratio = float(h_count) / float(atom_count)
+
+        if h_count < min_hydrogen_count:
+            return True
+
+        if h_ratio < float(min_hydrogen_ratio):
+            return True
+
+        return False
+
+    except Exception:
+        logger.print(f"[ERROR] Failed to count hydrogens in structure")
+        return True
+
+
